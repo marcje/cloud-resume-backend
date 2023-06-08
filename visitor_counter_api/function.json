@@ -1,0 +1,35 @@
+{
+  "bindings": [
+    {
+      "authLevel": "function",
+      "type": "httpTrigger",
+      "direction": "in",
+      "name": "request",
+      "methods": [
+        "get",
+        "post"
+      ]
+    },
+    {
+      "type": "http",
+      "direction": "out",
+      "name": "$return"
+    },
+    {
+      "type": "table",
+      "direction": "in",
+      "name": "storedVisitors",
+      "tableName": "visitorCounter",
+      "createIfNotExists": "false",
+      "connection": "CosmosDbConnectionString"
+    },
+    {
+      "type": "table",
+      "direction": "out",
+      "name": "newVisitor",
+      "tableName": "visitorCounter",
+      "partitionKey": "uniqueVisitor",
+      "connection": "CosmosDbConnectionString"
+    }
+  ]
+}
