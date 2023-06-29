@@ -1,13 +1,14 @@
 import hashlib
 import json
 import logging
+import os
 
 import azure.functions as func
 
 def main(request: func.HttpRequest, storedVisitors: str, newVisitor: func.Out[str]) -> func.HttpResponse:
     # Setup CORS
     headers = {
-        "Access-Control-Allow-Origin": "https://resume.itsburning.nl",
+        "Access-Control-Allow-Origin": str(os.environ["CORS_ORIGIN"]),
         "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization"
     }
