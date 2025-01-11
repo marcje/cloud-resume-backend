@@ -1,0 +1,184 @@
+name: Setup infrastructure
+on:
+  pull_request:
+    branches:
+      - acceptance
+      - main
+  push:
+    branches:
+      - acceptance
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+  pull-requests: write
+
+env:
+  TERRAFORM_VERSION: "1.9.8"
+  ARM_SUBSCRIPTION_ID: ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID: ${{ secrets.ARM_TENANT_ID }}
+  ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
+  ARM_CLIENT_SECRET: ${{ secrets.ARM_CLIENT_SECRET }}
+  TF_VAR_resource_group_budget_contact_emails: ${{ secrets.RESOURCE_GROUP_BUDGET_CONTACT_EMAILS }}
+
+jobs:
+  setup_environment:
+    runs-on: ubuntu-latest
+
+    outputs:
+      deploy_environment: ${{ steps.set_env.outputs.deploy_environment }}
+
+    steps:
+      - name: "Determine environment based on git branch"
+        id: set_env
+        run: |
+          if [[ $GITHUB_REF == "refs/heads/main" ]]; then
+            echo "deploy_environment=production" >> "$GITHUB_OUTPUT"
+          else
+            #echo "deploy_environment=staging" >> "$GITHUB_OUTPUT"
+            echo "deploy_environment=production" >> "$GITHUB_OUTPUT"
+          fi
+
+  terraform_plan_and_apply:
+    needs: setup_environment
+    runs-on: ubuntu-latest
+
+    env:
+      WORKING_DIR: "infra/${{ needs.setup_environment.outputs.deploy_environment }}"
+      JQ_FILTER: '.resource_changes[] | select(.change.actions[0]=="create" or .change.actions[0]=="update" or .change.actions[0]=="delete")'
+    defaults:
+      run:
+        working-directory: ${{ env.WORKING_DIR }}
+
+    steps:
+      - name: "Checkout repository"
+        uses: actions/checkout@v4
+
+      - name: "Setup Terraform"
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: "Initialize Terraform"
+        id: tf_init
+        run: terraform init
+
+      - name: "Style check on Terraform code"
+        if: ${{ github.event_name == 'pull_request' }}
+        run: terraform fmt -check -recursive
+
+      - name: "Configuration and syntax check on Terraform code"
+        if: ${{ github.event_name == 'pull_request' }}
+        run: terraform validate
+
+      - name: "Generate Terraform execution plan"
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PLAN_NAME="gh-pr-${{ github.event.pull_request.number }}.tfplan"
+          else
+            PLAN_NAME="gh-run-${{ github.run_id }}.tfplan"
+          fi
+          echo "PLAN_NAME=$PLAN_NAME" >> $GITHUB_ENV
+          terraform plan -no-color -out="$PLAN_NAME"
+
+      - name: "Check if Terraform plan has any changes"
+        id: tf_changes
+        run: |
+          CHANGES=$(terraform show -no-color -json ${{ env.PLAN_NAME }} | jq -r '${{ env.JQ_FILTER }}')
+          if [ -z "$CHANGES" ]; then
+            echo "No resource changes detected."
+            echo "changes_present=false" >> $GITHUB_OUTPUT
+          else
+            echo "Resource changes detected."
+            echo "changes_present=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "Generate checksum hash of Terraform plan"
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            HASH_NAME="gh-pr-${{ github.event.pull_request.number }}-tfplan.hash"
+          else
+            HASH_NAME="gh-run-${{ github.run_id }}-tfplan.hash"
+          fi
+          echo "HASH_NAME=$HASH_NAME" >> $GITHUB_ENV
+          terraform show -no-color -json ${{ env.PLAN_NAME }} | jq -r '${{ env.JQ_FILTER }}' | sha512sum | awk '{print $1}' > "$HASH_NAME"
+
+      - name: "Upload checksum hash"
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.HASH_NAME }}
+          path: ${{ env.WORKING_DIR }}/${{ env.HASH_NAME }}
+          if-no-files-found: error
+          overwrite: true
+
+      - name: "Output generated Terraform plan"
+        if: ${{ github.event_name == 'pull_request' && steps.tf_changes.outputs.changes_present == 'true' }}
+        id: tf_show
+        run: |
+          terraform show -no-color ${{ env.PLAN_NAME }} > ${{ env.PLAN_NAME }}.txt
+      
+      - name: "Add terraform plan as a comment"
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const changesPresent = "${{ steps.tf_changes.outputs.changes_present }}";
+            const initOutcome = "${{ steps.tf_init.outcome }}";
+
+            // If there are changes, read the file; if not, show a "no changes" message
+            let planOutput;
+            if (changesPresent === 'true') {
+              try {
+                const planContent = fs.readFileSync("${{ env.WORKING_DIR }}/${{ env.PLAN_NAME }}.txt", 'utf8');
+                planOutput = "```diff\n" + planContent + "\n```";
+              } catch (e) {
+                planOutput = 'Unable to load Terraform plan.';
+              }
+            } else {
+              planOutput = 'No resource changes detected.';
+            }
+
+            const initOutput = `#### Terraform Initialization: \`${initOutcome}\``;
+            const message = `${initOutput}\n\n#### Terraform Plan:\n\n${planOutput}\n\n*Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: message
+            });
+
+      - name: "Retrieve current PR number"
+        if: ${{ github.event_name == 'push' }}
+        uses: jwalton/gh-find-current-pr@master
+        id: current-pr
+        with:
+          state: all
+
+      - name: "Download Terraform plan checksum hash from PR"
+        if: ${{ github.event_name == 'push' }}
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{secrets.GITHUB_TOKEN}}
+          pr: ${{ steps.current-pr.outputs.pr }}
+          name: gh-pr-${{ steps.current-pr.outputs.pr }}-tfplan.hash
+          path: ${{ env.WORKING_DIR }}
+          if_no_artifact_found: fail
+
+      - name: "Compare Terraform plan from validated PR and current run"
+        if: ${{ github.event_name == 'push' }}
+        run: |
+          if ! diff gh-pr-${{ steps.current-pr.outputs.pr }}-tfplan.hash ${{ env.HASH_NAME }}; then
+            echo "Hash mismatch! Exiting."
+            exit 1
+          fi
+
+      - name: "Apply Terraform plan"
+        if: ${{ github.event_name == 'push' && steps.tf_changes.outputs.changes_present == 'true' }}
+        run: terraform apply -auto-approve "${{ env.PLAN_NAME }}"
+
