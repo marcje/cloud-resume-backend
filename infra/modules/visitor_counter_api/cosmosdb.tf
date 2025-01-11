@@ -1,13 +1,13 @@
 resource "azurerm_cosmosdb_account" "cosacc" {
-  name                = "${var.default_prefix}-cosacc"
-  location            = var.default_location
-  resource_group_name = azurerm_resource_group.rg.name
+  name                = var.cosmosdb_name
+  location            = var.location
+  resource_group_name = var.resource_group_name
   offer_type          = "Standard"
   kind                = "GlobalDocumentDB"
-  enable_free_tier    = true
-  
+  free_tier_enabled   = true
+
   geo_location {
-    location          = azurerm_resource_group.rg.location
+    location          = var.location
     failover_priority = 0
   }
 
@@ -32,7 +32,7 @@ resource "azurerm_cosmosdb_account" "cosacc" {
 
 resource "azurerm_cosmosdb_table" "costab" {
   name                = "visitorCounter"
-  resource_group_name = azurerm_resource_group.rg.name
+  resource_group_name = var.resource_group_name
   account_name        = azurerm_cosmosdb_account.cosacc.name
   throughput          = 400
 }

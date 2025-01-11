@@ -9,23 +9,6 @@ variable "default_prefix" {
   description = "Default prefix for resources."
 }
 
-variable "storage_account_name" {
-  type        = string
-  description = "Storage account name - historically different naming convention."
-}
-
-variable "tenant_id" {
-  type        = string
-  sensitive   = true
-  description = "Microsoft Azure tenant ID"
-}
-
-variable "subscription_id" {
-  type        = string
-  sensitive   = true
-  description = "Microsoft Azure subscription ID"
-}
-
 variable "resource_group_budget_amount" {
   type        = string
   description = "Resource group budget amount"

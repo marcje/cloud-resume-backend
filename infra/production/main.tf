@@ -21,7 +21,8 @@ resource "azurerm_consumption_budget_resource_group" "resource-group-budget" {
     operator       = "GreaterThan"
     contact_emails = var.resource_group_budget_contact_emails
   }
-    notification {
+
+  notification {
     enabled        = true
     threshold      = var.resource_group_budget_forecast_threshold
     threshold_type = "Forecasted"
@@ -29,3 +30,16 @@ resource "azurerm_consumption_budget_resource_group" "resource-group-budget" {
     contact_emails = var.resource_group_budget_contact_emails
   }
 }
+
+module "visitor_counter_api" {
+  source                           = "../modules/visitor_counter_api"
+  resource_group_name              = azurerm_resource_group.rg.name
+  location                         = azurerm_resource_group.rg.location
+  storage_account_name             = "${replace(var.default_prefix, "-", "")}st"
+  storage_account_replication_type = var.storage_account_replication_type
+  cosmosdb_name                    = "${var.default_prefix}-cosacc"
+  service_plan_name                = "${var.default_prefix}-asp"
+  function_app_name                = "${var.default_prefix}-func"
+  cors_allowed_origins             = var.cors_domain
+}
+
