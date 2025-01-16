@@ -192,9 +192,13 @@ override.tf.json
 # !example_override.tf
 
 # Include tfplan files to ignore the plan output of command: terraform plan -out=tfplan
-# example: *tfplan*
+*tfplan*
 
 # Ignore CLI configuration files
 .terraformrc
 terraform.rc
+
+# Allow public tfvars file containing public / non-secret variables
+!infra/*/vars-public.auto.tfvars
+
 

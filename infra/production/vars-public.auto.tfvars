@@ -1,0 +1,8 @@
+default_prefix                           = "mtb-p-cv-backend"
+storage_account_replication_type         = "GRS"
+cors_domain                              = "resume.itsburning.nl"
+resource_group_budget_amount             = "1"
+resource_group_budget_start              = "2024-10-01T00:00:00Z"
+resource_group_budget_end                = "2030-05-30T00:00:00Z"
+resource_group_budget_actual_threshold   = "10.0"
+resource_group_budget_forecast_threshold = "90.0"
