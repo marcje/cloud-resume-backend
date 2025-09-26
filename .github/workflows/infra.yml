@@ -1,13 +1,14 @@
 name: Setup infrastructure
 on:
-  pull_request:
-    branches:
-      - acceptance
-      - main
-  push:
-    branches:
-      - acceptance
-      - main
+  workflow_dispatch:
+#  pull_request:
+#    branches:
+#      - acceptance
+#      - main
+#  push:
+#    branches:
+#      - acceptance
+#      - main
 
 permissions:
   id-token: write
